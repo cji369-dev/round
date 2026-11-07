@@ -159,7 +159,14 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .panel{width:100%;max-width:560px;max-height:84vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-bottom:0;border-radius:26px 26px 0 0;padding:20px max(18px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px));display:flex;flex-direction:column;gap:16px}
 .phead{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .clist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
-.clist li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.clist li{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:2px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.clist li.edit{display:block}
+.nmb{border:0;background:none;color:var(--gold);font:700 12px var(--body);letter-spacing:.1em;text-transform:uppercase;padding:2px 0;text-align:left;cursor:pointer;min-height:32px;align-self:flex-start}
+.edf{display:flex;flex-direction:column;gap:10px;padding:10px 0}
+.edf .btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.edf .btn{min-height:48px}
+.ibtn{width:44px;height:48px;border:0;background:none;color:var(--muted);cursor:pointer;display:grid;place-items:center;padding:0}
+.ibtn svg{width:20px;height:20px}
 .clist .forget{height:48px}
 [hidden]{display:none!important}
 </style>
@@ -257,7 +264,7 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 <div class="sheet" id="clientsSheet" hidden role="dialog" aria-modal="true" aria-label="Clients and saved addresses">
   <div class="panel">
     <div class="phead"><h2 class="h2" id="clientsHead">Clients</h2><button class="linkb" type="button" data-close="1">Close</button></div>
-    <input type="text" id="clientQ" autocomplete="off" autocapitalize="off" placeholder="Search saved addresses">
+    <input type="text" id="clientQ" autocomplete="off" autocapitalize="off" placeholder="Search by name or address">
     <ul class="clist" id="clientList"></ul>
     <button class="btn" type="button" data-close="1">Done</button>
   </div>
@@ -360,11 +367,11 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
   }
 
   /* ---------- saved addresses ---------- */
-  function remember(label,lat,lng){
+  function remember(label,lat,lng,name){
     var lc=label.toLowerCase(),now=Date.now(),hit=null;
     for(var i=0;i<BOOK.length;i++){if(BOOK[i].label.toLowerCase()===lc){hit=BOOK[i];break;}}
-    if(hit){hit.uses=(hit.uses||1)+1;hit.last=now;hit.lat=lat;hit.lng=lng;}
-    else BOOK.push({label:label,lat:lat,lng:lng,uses:1,last:now});
+    if(hit){hit.uses=(hit.uses||1)+1;hit.last=now;hit.lat=lat;hit.lng=lng;if(name&&!hit.name)hit.name=name;}
+    else BOOK.push({label:label,lat:lat,lng:lng,name:name||'',uses:1,last:now});
     if(BOOK.length>600){BOOK.sort(function(a,b){return (b.last||0)-(a.last||0);});BOOK.length=600;}
     saveBook();
   }
@@ -375,6 +382,7 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
   })();
   function fromBook(b){
     var i=b.label.indexOf(',');
+    if(b.name)return {title:b.name,sub:b.label,label:b.label,name:b.name,lat:b.lat,lng:b.lng,saved:true,ref:b};
     return {title:i>0?b.label.slice(0,i):b.label,sub:i>0?b.label.slice(i+1).trim():'',label:b.label,lat:b.lat,lng:b.lng,saved:true,ref:b};
   }
   var ABBR={rd:'road',ave:'avenue',av:'avenue',ln:'lane',gdns:'gardens',cres:'crescent',ter:'terrace',sq:'square'};
@@ -385,7 +393,7 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
     var qt=tokens(expand(q));if(!qt.length)return [];
     var compactQ=q.toLowerCase().replace(/\s+/g,'');
     return BOOK.filter(function(b){
-      var bt=tokens(b.label),lc=b.label.toLowerCase();
+      var full=(b.name?b.name+' ':'')+b.label,bt=tokens(full),lc=full.toLowerCase();
       var ok=qt.every(function(t){return bt.some(function(w){return w.indexOf(t)===0;})||(t.length>=4&&lc.indexOf(t)>-1);});
       if(!ok&&compactQ.length>=5)ok=lc.replace(/\s+/g,'').indexOf(compactQ)>-1;
       return ok;
@@ -429,6 +437,7 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
     timer=setTimeout(function(){remote(v,my,local);},280);
   }
   function dupOf(list,s){
+    if(s.label&&list.some(function(x){return x.saved&&x.label.toLowerCase()===s.label.toLowerCase();}))return true;
     var t=s.title.toLowerCase();
     return list.some(function(x){return x.title.toLowerCase()===t&&hav(x,s)<0.4;});
   }
@@ -468,11 +477,11 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
   }
 
   /* ---------- today's jobs ---------- */
-  function addStop(label,lat,lng){
-    var lc=label.toLowerCase();
-    for(var i=0;i<S.stops.length;i++){if(S.stops[i].label.toLowerCase()===lc)return false;}
-    S.stops.push({label:label,lat:lat,lng:lng});S.plan=null;S.done={};
-    remember(label,lat,lng);save();renderStops();renderRoute();drawMap();updateBars();
+  function addStop(label,lat,lng,name){
+    var lc=label.toLowerCase(),nm=(name||'').toLowerCase();
+    for(var i=0;i<S.stops.length;i++){if(S.stops[i].label.toLowerCase()===lc&&(S.stops[i].name||'').toLowerCase()===nm)return false;}
+    S.stops.push({label:label,lat:lat,lng:lng,name:name||''});S.plan=null;S.done={};
+    remember(label,lat,lng,name);save();renderStops();renderRoute();drawMap();updateBars();
     return true;
   }
   async function choose(s){
@@ -481,7 +490,7 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
         var r=await pcLookup(s.label);
         s=Object.assign({},s,{lat:r.lat,lng:r.lng,label:s.label+(r.area?', '+r.area:'')});
       }
-      if(addStop(s.label,s.lat,s.lng))setAdd('Added: '+s.label);
+      if(addStop(s.label,s.lat,s.lng,s.name))setAdd('Added: '+(s.name||s.label));
       else setAdd("That one is already in today's jobs.");
     }catch(e){setAdd("Couldn't find that postcode. Try again.",true);return;}
     $('add').value='';autoGrow();hideSugg();
@@ -525,12 +534,14 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
     $('jobsHead').textContent=n?"Today's jobs ("+n+")":"Today's jobs";
     $('newDay').hidden=!n;
     $('jobs').innerHTML=n?S.stops.map(function(s,k){
-      var i=s.label.indexOf(','),t1=i>0?s.label.slice(0,i):s.label,t2=i>0?s.label.slice(i+1).trim():'';
-      return '<li><span class="ic">'+PIN+'</span><span class="stx"><span class="st1">'+esc(t1)+'</span>'+(t2?'<span class="st2">'+esc(t2)+'</span>':'')+'</span><button type="button" class="rm" data-rm="'+k+'" aria-label="Remove '+esc(s.label)+'">Remove</button></li>';
+      var i=s.label.indexOf(','),t1=s.name||(i>0?s.label.slice(0,i):s.label),t2=s.name?s.label:(i>0?s.label.slice(i+1).trim():'');
+      return '<li><span class="ic">'+PIN+'</span><span class="stx"><span class="st1">'+esc(t1)+'</span>'+(t2?'<span class="st2">'+esc(t2)+'</span>':'')+(s.name?'':'<button type="button" class="nmb" data-nm="'+k+'">Add name</button>')+'</span><button type="button" class="rm" data-rm="'+k+'" aria-label="Remove '+esc(s.label)+'">Remove</button></li>';
     }).join(''):'<li class="none">No jobs yet. Start typing a street or postcode above.</li>';
     var b=$('badge');b.hidden=!n;b.textContent=n;
   }
   $('jobs').addEventListener('click',function(e){
+    var nb=e.target.closest('button[data-nm]');
+    if(nb){var st=S.stops[+nb.dataset.nm];if(st)openClients(st.label);return;}
     var b=e.target.closest('button[data-rm]');if(!b)return;
     S.stops.splice(+b.dataset.rm,1);S.plan=null;S.done={};save();renderStops();renderRoute();drawMap();updateBars();
   });
@@ -544,32 +555,69 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
   /* ---------- sheets: settings and clients ---------- */
   function openSheet(id){$(id).hidden=false;document.body.classList.add('sheetopen');}
   function closeSheets(){
+    editing=null;
     ['settingsSheet','clientsSheet'].forEach(function(i){$(i).hidden=true;});
     document.body.classList.remove('sheetopen');
     S.homeText=$('home').value.trim()||S.homeText;save();updateHomeLine();
   }
   function updateHomeLine(){$('homeLine').textContent=S.homeText||'Not set';}
+  var editing=null;
+  var PENCIL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+  function findBook(label){for(var i=0;i<BOOK.length;i++){if(BOOK[i].label===label)return BOOK[i];}return null;}
   function renderClients(){
     var q=$('clientQ').value.trim();
     var list=q?bookMatches(q,50):BOOK.slice().sort(byUse).map(fromBook);
-    var inList={};S.stops.forEach(function(s){inList[s.label.toLowerCase()]=1;});
+    var inList={};S.stops.forEach(function(s){inList[s.label.toLowerCase()+'|'+(s.name||'').toLowerCase()]=1;});
     $('clientsHead').textContent=BOOK.length?'Clients ('+BOOK.length+')':'Clients';
     var ul=$('clientList');ul._list=list;
     ul.innerHTML=list.length?list.map(function(s,k){
-      var on=inList[s.label.toLowerCase()];
+      if(editing&&s.ref&&s.ref.label===editing){
+        return '<li class="edit"><div class="edf"><label class="lbl" for="edName">Name</label><input type="text" id="edName" autocomplete="off" placeholder="For example Mrs Jones" value="'+esc(s.ref.name||'')+'"><label class="lbl" for="edAddr">Address</label><input type="text" id="edAddr" autocomplete="off" value="'+esc(s.ref.label)+'"><p class="status" id="edStatus"></p><div class="btns"><button type="button" class="btn sec" data-cancel="1">Cancel</button><button type="button" class="btn" data-save="1">Save</button></div></div></li>';
+      }
+      var on=inList[s.label.toLowerCase()+'|'+(s.name||'').toLowerCase()];
       return '<li><span class="stx"><span class="st1">'+esc(s.title)+'</span>'+(s.sub?'<span class="st2">'+esc(s.sub)+'</span>':'')+'</span>'+
         '<button type="button" class="pill" data-add="'+k+'"'+(on?' disabled':'')+'>'+(on?'Added':'Add')+'</button>'+
-        '<button type="button" class="forget" data-f="'+k+'" aria-label="Forget '+esc(s.label)+'">×</button></li>';
-    }).join(''):'<li style="display:block;padding:18px 2px;color:var(--muted)">'+(q?'No saved address matches.':'Addresses you add are saved here, ready to use again.')+'</li>';
+        '<button type="button" class="ibtn" data-edit="'+k+'" aria-label="Edit '+esc(s.title)+'">'+PENCIL+'</button>'+
+        '<button type="button" class="forget" data-f="'+k+'" aria-label="Forget '+esc(s.title)+'">×</button></li>';
+    }).join(''):'<li style="display:block;padding:18px 2px;color:var(--muted)">'+(q?'No saved client matches.':'Addresses you add are saved here. Tap the pencil to give one a name.')+'</li>';
+  }
+  function openClients(label){
+    $('clientQ').value='';editing=label||null;renderClients();openSheet('clientsSheet');
+    if(editing){setTimeout(function(){var n=$('edName');if(n){n.scrollIntoView({block:'center'});n.focus();}},60);}
+  }
+  async function saveEdit(){
+    var b=findBook(editing);if(!b){editing=null;renderClients();return;}
+    var name=$('edName').value.trim(),addr=$('edAddr').value.trim(),st=$('edStatus');
+    function say(t,err){st.textContent=t;st.className='status'+(err?' err':'');}
+    if(!addr){say('The address cannot be empty.',true);return;}
+    var oldLabel=b.label,lat=b.lat,lng=b.lng;
+    if(addr!==oldLabel){
+      say('Finding the new address…');
+      try{
+        var pc=pcMatch(addr),hit=null;
+        if(pc){hit=await pcLookup(pc);}else{var r=await nominatim(expand(addr),1);if(r[0])hit=r[0];}
+        if(!hit){say("Couldn't find that address. Check it and try again.",true);return;}
+        lat=hit.lat;lng=hit.lng;
+      }catch(e){say("Can't look that up right now. Check your signal.",true);return;}
+    }
+    b.name=name;b.label=addr;b.lat=lat;b.lng=lng;saveBook();
+    var moved=false;
+    S.stops.forEach(function(x){if(x.label===oldLabel){x.label=addr;x.lat=lat;x.lng=lng;x.name=name;if(addr!==oldLabel)moved=true;}});
+    if(S.plan){if(moved){S.plan=null;S.done={};}else S.plan.route.forEach(function(n){if(n.label===oldLabel)n.name=name;});}
+    save();editing=null;renderClients();renderStops();renderRoute();drawMap();updateBars();
   }
   $('openSettings').addEventListener('click',function(){$('home').value=S.homeText||'';openSheet('settingsSheet');});
   $('changeHome').addEventListener('click',function(){$('home').value=S.homeText||'';openSheet('settingsSheet');});
-  $('openClients').addEventListener('click',function(){$('clientQ').value='';renderClients();openSheet('clientsSheet');});
+  $('openClients').addEventListener('click',function(){openClients(null);});
   $('clientQ').addEventListener('input',renderClients);
   $('clientList').addEventListener('click',function(e){
-    var list=this._list||[],a=e.target.closest('button[data-add]'),f=e.target.closest('button[data-f]');
-    if(a){var s=list[+a.dataset.add];if(s)addStop(s.label,s.lat,s.lng);renderClients();}
+    var list=this._list||[];
+    var a=e.target.closest('button[data-add]'),f=e.target.closest('button[data-f]'),ed=e.target.closest('button[data-edit]');
+    if(a){var s=list[+a.dataset.add];if(s)addStop(s.label,s.lat,s.lng,s.name);renderClients();}
     else if(f){var t=list[+f.dataset.f];if(t&&t.ref){var ix=BOOK.indexOf(t.ref);if(ix>-1){BOOK.splice(ix,1);saveBook();}}renderClients();}
+    else if(ed){var u=list[+ed.dataset.edit];if(u&&u.ref){editing=u.ref.label;renderClients();var n=$('edName');if(n)n.focus();}}
+    else if(e.target.closest('button[data-cancel]')){editing=null;renderClients();}
+    else if(e.target.closest('button[data-save]')){saveEdit();}
   });
   document.querySelectorAll('.sheet').forEach(function(sh){
     sh.addEventListener('click',function(e){if(e.target===sh||e.target.closest('[data-close]'))closeSheets();});
@@ -663,7 +711,7 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
         start={lat:h.lat,lng:h.lng,label:h.text};startKind='home';
       }
       setStatus('Working out the best order…');
-      var stops=S.stops.map(function(s){return {kind:'stop',label:s.label,lat:s.lat,lng:s.lng};});
+      var stops=S.stops.map(function(s){return {kind:'stop',label:s.label,lat:s.lat,lng:s.lng,name:s.name||''};});
       var H={kind:startKind,label:start.label,lat:start.lat,lng:start.lng};
       var seq2,params,roundtrip=false,endsAtStart=false;
       if(S.mode==='out'||S.mode==='in'){
@@ -699,7 +747,7 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
       var tm=0,tt=0;
       var route=ordered.map(function(n,k){
         var lg=k?legs[k-1]:null;if(lg){tm+=lg.mi;tt+=lg.min;}
-        return {kind:n.kind,label:n.label,lat:n.lat,lng:n.lng,mi:lg?lg.mi:0,min:lg?lg.min:0};
+        return {kind:n.kind,label:n.label,name:n.name||'',lat:n.lat,lng:n.lng,mi:lg?lg.mi:0,min:lg?lg.min:0};
       });
       S.plan={mode:S.mode,route:route,totalMi:tm,totalMin:tt,est:est,geometry:geometry,stops:stops.length};
       S.done={};save();
@@ -745,7 +793,7 @@ ol.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
       var nav='https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(ptStr(n));
       html+='<li class="row'+(n.kind!=='stop'?' home':'')+(done?' done':'')+'">'+
         '<button class="num" type="button" data-key="'+esc(key)+'" aria-pressed="'+(done?'true':'false')+'" aria-label="'+(n.kind==='stop'?'Job '+tag:'Home')+', tap to mark done">'+(done?'✓':tag)+'</button>'+
-        '<div class="txt"><div class="addr">'+esc(n.label)+'</div><div class="leg">'+esc(leg)+'</div></div>'+
+        '<div class="txt"><div class="addr">'+esc(n.name||n.label)+'</div>'+(n.name?'<div class="leg">'+esc(n.label)+'</div>':'')+'<div class="leg">'+esc(leg)+'</div></div>'+
         '<a class="go" href="'+esc(nav)+'" target="_blank" rel="noopener" aria-label="Go to '+esc(n.label)+'">Go '+ARROW+'</a></li>';
     });
     html+='</ol><button class="btn sec" type="button" data-goto="map">Add or change jobs</button></div>';
